@@ -1,0 +1,15 @@
+Day 2 5€ · 3 nov. 2026 · main n°1
+6-max · ante 1 bb · ITM
+Hero SB 20 bb : K♠️ J♥️
+UTG 75 bb
+
+Preflop (pot 2.5 bb) · SRP :
+  UTG raise to 2.5, Hero (SB) call 2
+Flop J♦️ J♣️ 7♣️ (pot 7 bb, SPR 2.5) :
+  UTG bet 1.8 (25% pot), Hero (SB) raise to 4.5, UTG call 2.7
+Turn 5♣️ (pot 16 bb, SPR 0.8) :
+  Hero (SB) check, UTG check
+River 9♠️ (pot 16 bb, SPR 0.8) :
+  Hero (SB) check, UTG check
+
+Résultat : Gagnée

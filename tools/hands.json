@@ -3,5 +3,10 @@
     "slug": "main-2",
     "title": "Main Event KSOP buy-in : 1000 €",
     "file": "tools/hands/main-2.txt"
+  },
+  {
+    "slug": "main-3",
+    "title": "Baggio Day 2 5€",
+    "file": "tools/hands/main-3.txt"
   }
 ]

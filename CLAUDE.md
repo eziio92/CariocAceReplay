@@ -9,8 +9,9 @@ généré par `python3 tools/build.py` à partir de `tools/hands.json`. Ne jamai
    (exemple : « Main Event KSOP buy-in 1000 euros »). Un titre par main, jamais réutilisé sans demander. Ne pas deviner.
 2. Enregistrer la main dans `tools/hands/<slug>.txt` (`main-3`, `main-4`, …) en retirant les lignes `Tags :` et `Note :` :
    ce sont les notes privées de l'auteur et le dépôt est public.
-3. Ajouter l'entrée `{slug, title, file}` dans `tools/hands.json`, puis lancer `python3 tools/build.py`.
-4. Jouer la page une fois dans un navigateur (Playwright) : le bandeau reste en haut, le titre s'affiche, pas de débordement.
+3. Ajouter l'entrée `{slug, title, file}` dans `tools/hands.json`, puis lancer `python3 tools/build.py <slug>` (uniquement la nouvelle main).
+4. Jouer la page dans un navigateur (Playwright) : le bandeau reste en haut, le titre s'affiche, pas de débordement, l'envoi ntfy part au bon format (essayer aussi un échec 503 puis un succès).
+   Avant le commit, vérifier par empreinte (`sha256sum`) que les pages déjà publiées n'ont pas changé.
 5. Commit + push sur `main`. Le lien est `https://eziio92.github.io/CariocAceReplay/<slug>/` (1 à 2 minutes de mise en ligne).
 
 ## Règles fixes
@@ -20,4 +21,6 @@ généré par `python3 tools/build.py` à partir de `tools/hands.json`. Ne jamai
 - Une seule réponse envoyée par navigateur et par main.
 - Ne pas toucher au dépôt `CariocAce-Hands` (l'appli de prise de note) : il a son propre service worker.
 - Termes de poker en anglais (fold, call, raise). Interface en français. Noir et platine, pas de vert, pas d'or, pas de serif.
-- Le code source de la page est `tools/replay-source.html`. Toute évolution se fait là, puis on reconstruit toutes les mains.
+- **Ne jamais modifier ni reconstruire une main déjà publiée** sans demande explicite de l'auteur (`build.py` les laisse telles quelles ; `--force` ou `--all` seulement sur demande).
+- Le code source de la page est `tools/replay-source.html`. Les évolutions s'appliquent aux nouvelles mains ; les anciennes gardent leur version tant que l'auteur ne demande pas de les reconstruire.
+- Le même canal ntfy sert toutes les mains. Les mains récentes mettent le titre de la main dans le titre de la notification (« Titre · Prénom : score ») et font jusqu'à 3 essais d'envoi ; `main-2` garde l'ancienne version (sans titre de main dans la notification, un seul essai).

@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Reconstruit toutes les pages de mains à partir de tools/hands.json.
+"""Construit les pages de mains à partir de tools/hands.json.
 
-Usage (depuis la racine du dépôt) : python3 tools/build.py
-Chaque entrée de hands.json produit <slug>/index.html (page autonome).
+Usage (depuis la racine du dépôt) :
+    python3 tools/build.py main-3          construit uniquement cette main (refuse si la page existe déjà)
+    python3 tools/build.py main-3 --force  reconstruit une main déjà publiée (seulement sur demande de l'auteur)
+    python3 tools/build.py --all           reconstruit toutes les mains (seulement sur demande de l'auteur)
+Les mains déjà publiées ne sont jamais réécrites par défaut.
 """
 import json, re, sys
 from pathlib import Path
@@ -46,5 +49,19 @@ def build(entry):
     out.write_text(head + s + '\n</body>\n</html>\n', encoding='utf-8')
     print('ok', out.relative_to(ROOT))
 
+args = sys.argv[1:]
+force = '--force' in args or '--all' in args
+slugs = [a for a in args if not a.startswith('--')]
+if not slugs and '--all' not in args:
+    sys.exit(__doc__)
+known = {e['slug'] for e in hands}
+unknown = [x for x in slugs if x not in known]
+if unknown:
+    sys.exit('Inconnu dans tools/hands.json : ' + ', '.join(unknown))
 for e in hands:
+    if '--all' not in args and e['slug'] not in slugs:
+        continue
+    if (ROOT / e['slug'] / 'index.html').exists() and not force:
+        print('déjà publiée, laissée telle quelle :', e['slug'])
+        continue
     build(e)
