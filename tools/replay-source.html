@@ -1000,18 +1000,33 @@ async function ownerPanel() {
     }, () => {});
   } catch (e) {}
 }
+/* Contenu de la notification : titre, réponses, puis la main elle-même (pour savoir de quoi on parle, même si le lien vient de quelqu'un d'autre),
+   et un appui sur la notification rouvre le lien exact. ntfy refuse un envoi de plus de 4096 octets au total (corps JSON compris) :
+   si c'est trop long, on garde le lien (il contient toute la main) et on raccourcit la main, jamais les réponses. */
+function ntfyPayload() {
+  const okN = guesses.filter(g => g.full).length;
+  const title = `${GUEST_TITLE ? GUEST_TITLE + ' · ' : ''}${GUEST_NAME} : ${okN} / ${guesses.length}`;
+  const answers = shareText(), click = location.hash ? pageBase() + location.hash : null;
+  const size = s => new TextEncoder().encode(s).length, LIMIT = 3900;
+  const build = (hand, withClick) => JSON.stringify(Object.assign(
+    { topic: NTFY_TOPIC, title, message: hand == null ? answers : answers + '\n\nLa main :\n' + hand, tags: ['spades'] },
+    withClick && click ? { click } : {}));
+  let full = build(GUEST_HAND, true);
+  if (size(full) <= LIMIT) return full;
+  for (const withClick of click ? [true, false] : [false]) {
+    for (let n = GUEST_HAND.length - 40; n > 0; n -= 40) {
+      const p = build(GUEST_HAND.slice(0, n).trimEnd() + (withClick ? '\n… (la suite : touche la notification)' : '\n…'), withClick);
+      if (size(p) <= LIMIT) return p;
+    }
+  }
+  return build(null, false);
+}
 /* Version web : une notification ntfy par main terminée. Un seul envoi par navigateur et par main (la première réponse compte). */
 async function sendViaNtfy() {
   let h = 0; for (const ch of GUEST_HAND) h = (h * 31 + ch.charCodeAt(0)) | 0;
   const key = 'cariocace-replay:sent:' + (h >>> 0).toString(36);
   try { if (localStorage.getItem(key)) return 'exists'; } catch (e) {}
-  const okN = guesses.filter(g => g.full).length;
-  const payload = JSON.stringify({
-    topic: NTFY_TOPIC,
-    title: `${GUEST_TITLE ? GUEST_TITLE + ' · ' : ''}${GUEST_NAME} : ${okN} / ${guesses.length}`,
-    message: shareText(),
-    tags: ['spades']
-  });
+  const payload = ntfyPayload();
   /* Jusqu'à 3 essais (réseau coupé, ntfy lent ou en erreur 5xx). « Envoyé » n'est affiché que si ntfy a répondu 2xx. */
   let last = null;
   for (let i = 0; i < 3; i++) {
