@@ -60,7 +60,7 @@ def build_site():
     s = s.replace('const NTFY_TOPIC = null;', 'const NTFY_TOPIC = ' + lit(cfg['ntfy_topic']) + ';')
     out = ROOT / 'index.html'
     # icône de l'écran d'accueil (iPhone) et manifeste : seulement pour la page d'accueil
-    extra = ('<link rel="icon" type="image/png" href="icon-192.png">\n<link rel="apple-touch-icon" href="icon-180.png">\n'
+    extra = ('<link rel="icon" type="image/png" href="icon-192.png?v=2">\n<link rel="apple-touch-icon" href="icon-180.png?v=2">\n'
              '<link rel="manifest" href="manifest.webmanifest">\n')
     out.write_text(wrap(s, extra), encoding='utf-8')
     print('ok', out.relative_to(ROOT))
