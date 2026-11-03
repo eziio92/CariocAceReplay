@@ -21,6 +21,7 @@ L'auteur n'a plus besoin de Claude pour envoyer une main. Si l'auteur demande à
 - Les réponses partent en notification ntfy vers le canal de `tools/config.json`. Ne pas changer le canal sans que l'auteur le demande.
 - Une seule réponse envoyée par navigateur et par main.
 - Ne pas toucher au dépôt `CariocAce-Hands` (l'appli de prise de note) : il a son propre service worker. Seule modification faite à la demande de l'auteur (3 nov. 2026) : le bouton « Faire deviner » de l'éditeur, qui ouvre la page de création avec la main (sans tags, note ni commentaire). Tout autre changement dans cette appli seulement sur demande.
+- Icône de l'écran d'accueil (`icon-180/192/512.png`, `manifest.webmanifest`) : l'icône de CariocAce Hands avec « Replay » en petit, en noir, sur le pique. Liens ajoutés seulement à la page d'accueil, jamais aux pages figées.
 - Termes de poker en anglais (fold, call, raise). Interface en français. Noir et platine, pas de vert, pas d'or, pas de serif.
 - **Ne jamais modifier ni reconstruire une main déjà publiée** (`main-2/`, `main-3/`) sans demande explicite de l'auteur (`build.py` les laisse telles quelles ; `--force` ou `--all` seulement sur demande). Ce sont des pages figées de l'ancien mode ; les nouvelles mains passent par des liens.
 - Le code source de la page est `tools/replay-source.html`. Les évolutions s'appliquent à la page d'accueil et donc à tous les liens (ils lisent la version en ligne) ; les pages figées gardent leur version tant que l'auteur ne demande pas de les reconstruire.

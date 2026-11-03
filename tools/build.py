@@ -37,7 +37,7 @@ def build(entry):
     out.write_text(wrap(s), encoding='utf-8')
     print('ok', out.relative_to(ROOT))
 
-def wrap(s):
+def wrap(s, extra=''):
     # <title>, meta et police remontés dans le <head>
     pull = lambda pat: (lambda m: (s.replace(m.group(0), '', 1), m.group(0)))(re.search(pat, s))
     s, _ = pull(r'<title>.*?</title>\n')
@@ -50,7 +50,7 @@ def wrap(s):
             f'<title>{cfg["page_title"]}</title>\n{font}'
             '<style>:root{color-scheme:dark;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}'
             'body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>\n'
-            '</head>\n<body>\n')
+            + extra + '</head>\n<body>\n')
     return head + s + '\n</body>\n</html>\n'
 
 def build_site():
@@ -59,7 +59,10 @@ def build_site():
     assert s.count('const NTFY_TOPIC = null;') == 1
     s = s.replace('const NTFY_TOPIC = null;', 'const NTFY_TOPIC = ' + lit(cfg['ntfy_topic']) + ';')
     out = ROOT / 'index.html'
-    out.write_text(wrap(s), encoding='utf-8')
+    # icône de l'écran d'accueil (iPhone) et manifeste : seulement pour la page d'accueil
+    extra = ('<link rel="icon" type="image/png" href="icon-192.png">\n<link rel="apple-touch-icon" href="icon-180.png">\n'
+             '<link rel="manifest" href="manifest.webmanifest">\n')
+    out.write_text(wrap(s, extra), encoding='utf-8')
     print('ok', out.relative_to(ROOT))
 
 args = sys.argv[1:]
