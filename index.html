@@ -956,7 +956,9 @@ function recapHtml(st, me) {
   const okN = guesses.filter(g => g.full).length, okA = guesses.filter(g => g.guess === g.actual).length;
   const sized = guesses.filter(g => g.sizeOk != null), okS = sized.filter(g => g.sizeOk).length;
   const alive = Object.keys(st.pl).filter(k => !st.pl[k].folded);
-  const shown = (st.street === 'river' && !me.folded && alive.length >= 2) ? alive.filter(k => k !== H.heroPos && H.villains[k]) : [];
+  /* showdown : à la river, ou dès qu'un joueur est all-in (la main se termine sans autre action, même préflop) */
+  const reachedSd = st.street === 'river' || alive.some(k => st.pl[k].allin);
+  const shown = (reachedSd && !me.folded && alive.length >= 2) ? alive.filter(k => k !== H.heroPos && H.villains[k]) : [];
   const sd = shown.length ? `<div class="show"><span class="lab">Showdown</span>${shown.map(k => `<div class="sd"><span class="mono">${esc(k)}</span><div class="sdcards">${H.villains[k].map(c => cardHtml(c, 64)).join('')}</div></div>`).join('')}</div>` : '';
   return `<div class="panel decide">${sd}<div class="score">${okN} / ${guesses.length}<small>décisions identiques</small></div>
     ${sized.length ? `<p class="muted">Actions identiques : ${okA} / ${guesses.length} · Tailles identiques : ${okS} / ${sized.length}</p>` : ''}
