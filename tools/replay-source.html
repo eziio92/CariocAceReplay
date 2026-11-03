@@ -355,17 +355,23 @@
 <main class="wrap">
   <header id="head">
     <h1>CariocAce <span>Replay</span></h1>
-    <p class="sub">Colle une main. Elle se joue toute seule et s'arrête à chaque décision de Hero : à toi de deviner.</p>
+    <p class="sub">Colle une main et donne-lui un titre : tu obtiens un lien à envoyer. La main se joue toute seule et s'arrête à chaque décision de Hero.</p>
   </header>
 
   <section id="view-input" class="stack">
     <label class="lab" for="hand-input">La main</label>
     <textarea id="hand-input" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="Hero: BTN, Ah Qs&#10;Stack: 40bb&#10;Preflop: UTG fold, CO raise 2.2, Hero raise 6, ..."></textarea>
     <p id="sample-note" class="hint">Main d'exemple. Remplace-la en collant la tienne.</p>
-    <p class="hint">Positions (UTG, CO, BTN, SB, BB…), cartes avec leur couleur (Ah Kd), tailles en bb.</p>
+    <p class="hint">Positions (UTG, CO, BTN, SB, BB…), cartes avec leur couleur (Ah Kd), tailles en bb. Les lignes Tags, Note, Commentaire et Correction ne partent pas dans le lien.</p>
+    <label class="lab" for="title-input">Titre affiché en haut de la main</label>
+    <div class="field"><input id="title-input" type="text" maxlength="80" autocomplete="off" placeholder="Ex. : Main Event KSOP buy-in 1000 euros"></div>
     <p id="err" class="err" role="alert" hidden></p>
     <div class="row">
-      <button class="btn primary" data-do="run" type="button">Lancer la main</button>
+      <button class="btn primary" data-do="link" type="button">Créer le lien</button>
+      <button class="btn ghost" data-do="run" type="button">Tester la main</button>
+    </div>
+    <div id="link-out" hidden></div>
+    <div class="row">
       <button class="btn ghost" data-do="clear" type="button">Vider</button>
       <button class="btn ghost" data-do="sample" type="button">Exemple</button>
     </div>
@@ -442,7 +448,7 @@ function parseHand(raw) {
   text = text.split('\n').filter(line => {
     let m = line.match(/^\s*[-•*]?\s*(r[ée]sultat|results?|showdown|issue|outcome)\s*[:\-–]\s*(.+)$/i);
     if (m) { results.push(m[2].trim()); return false; }
-    m = line.match(/^\s*[-•*]?\s*(notes?|comm?entaires?|remarques?|pourquoi|why|tags?|[ée]tiquettes?)\s*[:\-–]\s*(.*)$/i);
+    m = line.match(/^\s*[-•*]?\s*(notes?|comm?entaires?|corrections?|remarques?|pourquoi|why|tags?|[ée]tiquettes?)\s*[:\-–]\s*(.*)$/i);
     if (m) { if (m[2].trim()) notes.push({ label: m[1][0].toUpperCase() + m[1].slice(1).toLowerCase(), text: m[2].trim() }); return false; }
     return true;
   }).join('\n');
@@ -678,8 +684,8 @@ const r1 = n => Math.round(n * 10) / 10;
 
 let H = null, idx = 0, phase = 'playing', guesses = [], aggroOpen = false, customOpen = false, lastEv = null, timer = null;
 /* Mode invité : si une main est intégrée ici, la page ne propose que celle-là (pas de saisie, pas de « nouvelle main »). */
-const GUEST_HAND = null;
-const GUEST_TITLE = null; /* titre affiché en haut de la main (une question posée à chaque nouvelle main) */
+let GUEST_HAND = null; /* mode invité : la main vient du lien (#h=…) ; les anciennes pages par main l'ont intégrée à la construction */
+let GUEST_TITLE = null; /* titre affiché en haut de la main (saisi à la création du lien) */
 const NTFY_TOPIC = null; /* version web : les réponses partent en notification vers ce sujet ntfy */
 let ownerRows = null; /* mode invité, côté propriétaire : les réponses reçues */
 let GH = null, GUEST_NAME = '', sendState = 'idle'; /* idle | sending | sent | exists | fail | nowrite */
@@ -827,6 +833,57 @@ function run() {
   const t = $('hand-input').value; store(t); $('err').hidden = true;
   try { H = parseHand(t); } catch (err) { showError(err.message); return; }
   start();
+}
+
+/* Lien à envoyer : la main et son titre sont encodés dans le lien lui-même (après le #). Rien n'est publié : aucun serveur, aucune étape de mise en ligne. */
+const NOTE_LINE = /^\s*[-•*]?\s*(notes?|comm?entaires?|corrections?|remarques?|pourquoi|why|tags?|[ée]tiquettes?)\s*[:\-–]/i;
+const stripNotes = t => String(t).split(/\r?\n/).filter(l => !NOTE_LINE.test(l)).join('\n').trim();
+function b64enc(s) {
+  const b = new TextEncoder().encode(s); let t = '';
+  for (let i = 0; i < b.length; i++) t += String.fromCharCode(b[i]);
+  return btoa(t).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function b64dec(s) {
+  s = String(s).replace(/-/g, '+').replace(/_/g, '/'); s += '='.repeat((4 - s.length % 4) % 4);
+  const t = atob(s), b = new Uint8Array(t.length);
+  for (let i = 0; i < t.length; i++) b[i] = t.charCodeAt(i);
+  return new TextDecoder().decode(b);
+}
+const pageBase = () => location.href.split('#')[0].split('?')[0];
+let LINK = null; /* dernier lien créé : { url, title, hand, n } */
+function makeLink() {
+  const raw = $('hand-input').value, title = $('title-input').value.trim().replace(/\s+/g, ' ').slice(0, 80);
+  $('err').hidden = true; LINK = null; paintLink();
+  const hand = stripNotes(raw);
+  let P;
+  try { P = parseHand(hand); } catch (err) { showError(err.message); return; }
+  if (!P.heroCount) { showError("Hero n'a aucune décision à deviner dans cette main."); return; }
+  if (!title) { showError('Écris le titre à afficher en haut de la main.'); $('title-input').focus(); return; }
+  store(raw);
+  const url = pageBase() + '#h=1.' + b64enc(JSON.stringify({ t: title, h: hand }));
+  if (url.length > 7000) { showError('Cette main est trop longue pour tenir dans un lien.'); return; }
+  LINK = { url, title, hand, n: P.heroCount };
+  paintLink(true);
+}
+function paintLink(scroll) {
+  const el = $('link-out'); if (!el) return;
+  if (!LINK) { el.hidden = true; el.innerHTML = ''; return; }
+  const canShare = typeof navigator !== 'undefined' && navigator && typeof navigator.share === 'function';
+  const msg = `${LINK.title}\n${LINK.url}`;
+  el.innerHTML = `<div class="panel share"><span class="lab">Lien à envoyer</span>
+    <p class="hint">${esc(LINK.title)} · ${LINK.n} décision${LINK.n > 1 ? 's' : ''} à deviner. La personne met son prénom, joue la main, et ses réponses t'arrivent en notification.</p>
+    <textarea id="link-text" readonly rows="3">${esc(LINK.url)}</textarea>
+    <div class="row">${canShare ? '<button class="btn primary" data-do="share-link" type="button">Envoyer</button>' : ''}<a class="btn ${canShare ? 'ghost' : 'primary'}" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">WhatsApp</a><button class="btn ghost" data-do="copy-link" type="button">Copier le lien</button></div>
+    <span class="lab">Ce qui part dans le lien</span>
+    <textarea id="link-hand" readonly rows="${Math.min(12, LINK.hand.split('\n').length + 1)}">${esc(LINK.hand)}</textarea>
+    <p class="hint">Les lignes Tags, Note, Commentaire et Correction sont retirées. Relis ce texte avant d'envoyer : le lien le contient en entier, et toute personne qui l'a peut le lire.</p></div>`;
+  el.hidden = false;
+  if (scroll) { try { el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {} }
+}
+async function shareLink(b) {
+  if (!LINK) return;
+  try { await navigator.share({ title: LINK.title, text: LINK.title, url: LINK.url }); }
+  catch (e) { if (!e || e.name !== 'AbortError') copyShare(b, 'link-text'); }
 }
 
 /* Affichage */
@@ -998,8 +1055,8 @@ async function shareOut(b) {
   try { await navigator.share({ text: shareText() }); }
   catch (e) { if (!e || e.name !== 'AbortError') copyShare(b); }
 }
-function copyShare(b) {
-  const ta = $('share-text'); if (!ta) return;
+function copyShare(b, id) {
+  const ta = $(id || 'share-text'); if (!ta) return;
   const old = b.textContent;
   const done = ok => { b.textContent = ok ? 'Copié' : 'Texte sélectionné : copie-le à la main'; setTimeout(() => { b.textContent = old; }, 2200); };
   ta.focus(); ta.select();
@@ -1104,9 +1161,12 @@ document.addEventListener('click', e => {
   else if (d === 'retry' && GUEST_HAND) { sendState = 'sending'; render(); sendAnswers(); }
   else if (d === 'copy') copyShare(b);
   else if (d === 'share') shareOut(b);
+  else if (d === 'link') makeLink();
+  else if (d === 'copy-link') copyShare(b, 'link-text');
+  else if (d === 'share-link') shareLink(b);
   else if (d === 'new' && !GUEST_HAND) { clearTimeout(timer); H = null; render(); }
-  else if (d === 'clear') { ta.value = ''; $('sample-note').hidden = true; $('err').hidden = true; ta.focus(); }
-  else if (d === 'sample') { ta.value = SAMPLE; $('sample-note').hidden = false; $('err').hidden = true; }
+  else if (d === 'clear') { ta.value = ''; $('title-input').value = ''; LINK = null; paintLink(); $('sample-note').hidden = true; $('err').hidden = true; ta.focus(); }
+  else if (d === 'sample') { ta.value = SAMPLE; LINK = null; paintLink(); $('sample-note').hidden = false; $('err').hidden = true; }
 });
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target && e.target.id === 'custom-size') { e.preventDefault(); customOk(); }
@@ -1114,14 +1174,37 @@ document.addEventListener('keydown', e => {
 });
 
 (function init() {
+  /* Adresse reçue : #h=1.<main et titre> = une main à deviner (invité) ; #new=<texte> = l'appli de notes envoie une main à mettre en forme (créateur). */
+  let prefill = null;
+  if (!GUEST_HAND) {
+    window.addEventListener('hashchange', () => location.reload());
+    const m = /^#(h|new)=(.+)$/.exec(location.hash || '');
+    if (m && m[1] === 'h') {
+      try {
+        const v = /^1\.(.+)$/.exec(m[2]); if (!v) throw new Error('format');
+        const o = JSON.parse(b64dec(v[1]));
+        if (!o || typeof o.h !== 'string' || !o.h.trim() || o.h.length > 6000) throw new Error('contenu');
+        GUEST_HAND = o.h; GUEST_TITLE = typeof o.t === 'string' && o.t.trim() ? o.t.trim().slice(0, 80) : null;
+      } catch (err) {
+        $('view-input').innerHTML = '<p class="err">Ce lien est incomplet ou abîmé. Demande-en un nouveau à la personne qui te l\'a envoyé.</p>';
+        return;
+      }
+      document.title = (GUEST_TITLE ? GUEST_TITLE + ' · ' : '') + 'CariocAce Replay';
+    } else if (m) {
+      try { prefill = b64dec(m[2]); } catch (err) {}
+      try { history.replaceState(null, '', pageBase()); } catch (err) {}
+    }
+  }
   if (GUEST_HAND) {
     try { GH = parseHand(GUEST_HAND); guestIntro(); ownerPanel(); }
     catch (err) { $('view-input').innerHTML = '<p class="err">Cette main ne peut pas être lue.</p>'; }
     return;
   }
   const ta = $('hand-input'), saved = load();
-  ta.value = saved && saved.trim() ? saved : SAMPLE;
+  ta.value = prefill && prefill.trim() ? prefill.trim() : (saved && saved.trim() ? saved : SAMPLE);
   $('sample-note').hidden = ta.value.trim() !== SAMPLE.trim();
-  ta.addEventListener('input', () => { $('sample-note').hidden = ta.value.trim() !== SAMPLE.trim(); $('err').hidden = true; });
+  const stale = () => { if (LINK) { LINK = null; paintLink(); } };
+  ta.addEventListener('input', () => { $('sample-note').hidden = ta.value.trim() !== SAMPLE.trim(); $('err').hidden = true; stale(); });
+  $('title-input').addEventListener('input', () => { $('err').hidden = true; stale(); });
 })();
 </script>

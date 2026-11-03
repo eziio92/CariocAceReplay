@@ -2,7 +2,8 @@
 """Construit les pages de mains à partir de tools/hands.json.
 
 Usage (depuis la racine du dépôt) :
-    python3 tools/build.py main-3          construit uniquement cette main (refuse si la page existe déjà)
+    python3 tools/build.py --site          construit la page d'accueil (index.html) : créer un lien + jouer une main reçue par lien
+    python3 tools/build.py main-3          (ancien mode) construit une page figée pour cette main (refuse si la page existe déjà)
     python3 tools/build.py main-3 --force  reconstruit une main déjà publiée (seulement sur demande de l'auteur)
     python3 tools/build.py --all           reconstruit toutes les mains (seulement sur demande de l'auteur)
 Les mains déjà publiées ne sont jamais réécrites par défaut.
@@ -16,7 +17,7 @@ hands = json.loads((ROOT / 'tools/hands.json').read_text(encoding='utf-8'))
 src = (ROOT / 'tools/replay-source.html').read_text(encoding='utf-8')
 
 # Les tags et notes de l'auteur ne doivent jamais partir dans une page publique.
-NOTE = re.compile(r'^\s*[-•*]?\s*(notes?|comm?entaires?|remarques?|pourquoi|why|tags?|[ée]tiquettes?)\s*[:\-–]', re.I)
+NOTE = re.compile(r'^\s*[-•*]?\s*(notes?|comm?entaires?|corrections?|remarques?|pourquoi|why|tags?|[ée]tiquettes?)\s*[:\-–]', re.I)
 lit = lambda v: json.dumps(v, ensure_ascii=False).replace('</', '<\\/')
 
 def build(entry):
@@ -26,11 +27,17 @@ def build(entry):
     hand = (ROOT / entry['file']).read_text(encoding='utf-8').strip()
     hand = '\n'.join(l for l in hand.splitlines() if not NOTE.match(l))
     s = src
-    for marker in ('const GUEST_HAND = null;', 'const GUEST_TITLE = null;', 'const NTFY_TOPIC = null;'):
+    for marker in ('let GUEST_HAND = null;', 'let GUEST_TITLE = null;', 'const NTFY_TOPIC = null;'):
         assert s.count(marker) == 1, marker
-    s = s.replace('const GUEST_HAND = null;', 'const GUEST_HAND = ' + lit(hand) + ';')
-    s = s.replace('const GUEST_TITLE = null;', 'const GUEST_TITLE = ' + lit(title) + ';')
+    s = s.replace('let GUEST_HAND = null;', 'let GUEST_HAND = ' + lit(hand) + ';')
+    s = s.replace('let GUEST_TITLE = null;', 'let GUEST_TITLE = ' + lit(title) + ';')
     s = s.replace('const NTFY_TOPIC = null;', 'const NTFY_TOPIC = ' + lit(cfg['ntfy_topic']) + ';')
+    out = ROOT / slug / 'index.html'
+    out.parent.mkdir(exist_ok=True)
+    out.write_text(wrap(s), encoding='utf-8')
+    print('ok', out.relative_to(ROOT))
+
+def wrap(s):
     # <title>, meta et police remontés dans le <head>
     pull = lambda pat: (lambda m: (s.replace(m.group(0), '', 1), m.group(0)))(re.search(pat, s))
     s, _ = pull(r'<title>.*?</title>\n')
@@ -44,14 +51,23 @@ def build(entry):
             '<style>:root{color-scheme:dark;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}'
             'body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>\n'
             '</head>\n<body>\n')
-    out = ROOT / slug / 'index.html'
-    out.parent.mkdir(exist_ok=True)
-    out.write_text(head + s + '\n</body>\n</html>\n', encoding='utf-8')
+    return head + s + '\n</body>\n</html>\n'
+
+def build_site():
+    """Page d'accueil : créer un lien (main + titre) et jouer une main reçue par lien. Pas de main intégrée."""
+    s = src
+    assert s.count('const NTFY_TOPIC = null;') == 1
+    s = s.replace('const NTFY_TOPIC = null;', 'const NTFY_TOPIC = ' + lit(cfg['ntfy_topic']) + ';')
+    out = ROOT / 'index.html'
+    out.write_text(wrap(s), encoding='utf-8')
     print('ok', out.relative_to(ROOT))
 
 args = sys.argv[1:]
 force = '--force' in args or '--all' in args
 slugs = [a for a in args if not a.startswith('--')]
+if '--site' in args:
+    build_site()
+    sys.exit(0)
 if not slugs and '--all' not in args:
     sys.exit(__doc__)
 known = {e['slug'] for e in hands}
