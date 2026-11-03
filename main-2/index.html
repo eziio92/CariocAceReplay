@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex,nofollow">
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#0a0a0d">
-<title>Main à deviner</title>
+<title>CariocAce Replay</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&family=Syne:wght@600;700&display=swap">
 <style>:root{color-scheme:dark;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
 </head>
@@ -49,6 +49,11 @@
   .wrap { max-width: 560px; margin: 0 auto; display: grid; gap: 20px; }
   .wrap > * { min-width: 0; }
 
+  /* Bandeau : toujours visible en haut, avant et pendant la main */
+  #head { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--bg); padding-block: 10px; border-bottom: 1px solid var(--line); }
+  #head.compact h1 { font-size: 20px; }
+  #head.compact .sub { display: none; }
+  body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 30; background: var(--bg); }
   h1 { margin: 0; font: 700 24px/1.1 var(--font-display); letter-spacing: 0.01em; }
   h1 span { color: var(--muted); font-weight: 600; }
   .sub { margin: 8px 0 0; color: var(--muted); font-size: 14px; max-width: 46ch; }
@@ -107,6 +112,7 @@
   .share textarea { min-height: 0; font-size: 14px; resize: none; }
   .intro { display: grid; gap: 14px; }
   .intro .cards { display: flex; gap: 8px; }
+  .intro .ttl { font: 700 18px/1.25 var(--font-display); overflow-wrap: anywhere; }
   a.btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
   .field input {
     width: 100%; height: 48px; padding: 0 14px;
@@ -122,6 +128,8 @@
 
   /* Jeu */
   .bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .bar > .lab:first-child { min-width: 0; overflow-wrap: anywhere; }
+  .bar > .lab:last-child { flex: none; white-space: nowrap; }
   .panel {
     background: var(--surface);
     border: 1px solid var(--line);
@@ -644,7 +652,8 @@ const r1 = n => Math.round(n * 10) / 10;
 
 let H = null, idx = 0, phase = 'playing', guesses = [], aggroOpen = false, customOpen = false, lastEv = null, timer = null;
 /* Mode invité : si une main est intégrée ici, la page ne propose que celle-là (pas de saisie, pas de « nouvelle main »). */
-const GUEST_HAND = "Main Event · 2 nov. 2026 · main n°2\n6-max · ante 1 bb · Début\nHero BTN 200 bb : 7♦️ 7♠️\nUTG 200 bb : J♥️ J♣️\n\nPreflop (pot 2.5 bb) · SRP :\n  UTG raise to 2, Hero (BTN) call 2\nFlop 4♠️ 2♣️ 5♠️ (pot 6.5 bb, SPR 30.5) :\n  UTG check, Hero (BTN) bet 4.3 (66% pot), UTG call 4.3\nTurn 6♠️ (pot 15.1 bb, SPR 12.8) :\n  UTG check, Hero (BTN) bet 15.1 (100% pot), UTG call 15.1\nRiver 7♣️ (pot 45.3 bb, SPR 3.9) :\n  UTG check, Hero (BTN) check\n\nRésultat : Gagnée\n";
+const GUEST_HAND = "Main Event · 2 nov. 2026 · main n°2\n6-max · ante 1 bb · Début\nHero BTN 200 bb : 7♦️ 7♠️\nUTG 200 bb : J♥️ J♣️\n\nPreflop (pot 2.5 bb) · SRP :\n  UTG raise to 2, Hero (BTN) call 2\nFlop 4♠️ 2♣️ 5♠️ (pot 6.5 bb, SPR 30.5) :\n  UTG check, Hero (BTN) bet 4.3 (66% pot), UTG call 4.3\nTurn 6♠️ (pot 15.1 bb, SPR 12.8) :\n  UTG check, Hero (BTN) bet 15.1 (100% pot), UTG call 15.1\nRiver 7♣️ (pot 45.3 bb, SPR 3.9) :\n  UTG check, Hero (BTN) check\n\nRésultat : Gagnée";
+const GUEST_TITLE = "Main Event KSOP buy-in 1000 euros"; /* titre affiché en haut de la main (une question posée à chaque nouvelle main) */
 const NTFY_TOPIC = "cariocace-94375a0493d9"; /* version web : les réponses partent en notification vers ce sujet ntfy */
 let ownerRows = null; /* mode invité, côté propriétaire : les réponses reçues */
 let GH = null, GUEST_NAME = '', sendState = 'idle'; /* idle | sending | sent | exists | fail | nowrite */
@@ -974,7 +983,7 @@ function goGuest() {
 function guestIntro() {
   const hp = GH.heroPos === 'HERO' ? '' : ` · ${esc(GH.heroPos)}`;
   $('head').querySelector('.sub').textContent = "Une main à deviner. Elle se joue toute seule et s'arrête à chaque décision de Hero : à toi de dire ce qu'il fait.";
-  $('view-input').innerHTML = `<div class="panel intro"><span class="lab">Hero${hp} · ${fmt(GH.stack)} bb · ${GH.seats.length}-max</span>
+  $('view-input').innerHTML = `<div class="panel intro">${GUEST_TITLE ? `<span class="ttl">${esc(GUEST_TITLE)}</span>` : ''}<span class="lab">Hero${hp} · ${fmt(GH.stack)} bb · ${GH.seats.length}-max</span>
     <div class="cards">${GH.heroCards.map(c => cardHtml(c, 56)).join('')}</div>
     <p class="hint">${GH.heroCount} décision${GH.heroCount > 1 ? 's' : ''} à deviner. Les cartes des adversaires restent cachées jusqu'au showdown.</p>
     <label class="lab" for="guest-name">Ton prénom</label>
@@ -1002,7 +1011,7 @@ function ovalHtml(st, acting, slots) {
 }
 
 function render() {
-  $('view-input').hidden = !!H; $('view-play').hidden = !H; $('head').hidden = !!H;
+  $('view-input').hidden = !!H; $('view-play').hidden = !H; $('head').classList.toggle('compact', !!H);
   if (GUEST_HAND) $('view-owner').hidden = !!H || !ownerRows;
   if (!H) return;
   const { st, log } = rp(idx);
@@ -1018,7 +1027,7 @@ function render() {
   const slots = Array.from({ length: 5 }, (_, i) => st.board[i] ? cardHtml(st.board[i], 28, i >= newFrom ? 'deal' : '') : '<span class="slot"></span>').join('');
   const label = phase === 'done' ? 'Terminé' : playing ? 'En cours' : `Décision ${n} / ${total}`;
 
-  let h = `<div class="bar">${GUEST_HAND ? '<span class="lab">Une main à deviner</span>' : '<button class="btn ghost sm" data-do="new" type="button">Nouvelle main</button>'}<span class="lab">${label}</span></div>`;
+  let h = `<div class="bar">${GUEST_HAND ? `<span class="lab">${esc(GUEST_TITLE || 'Une main à deviner')}</span>` : '<button class="btn ghost sm" data-do="new" type="button">Nouvelle main</button>'}<span class="lab">${label}</span></div>`;
   h += `<div class="table">
     ${ovalHtml(st, acting, slots)}
     <div class="tbl-hero">

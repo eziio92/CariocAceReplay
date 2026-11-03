@@ -1,0 +1,15 @@
+Main Event · 2 nov. 2026 · main n°2
+6-max · ante 1 bb · Début
+Hero BTN 200 bb : 7♦️ 7♠️
+UTG 200 bb : J♥️ J♣️
+
+Preflop (pot 2.5 bb) · SRP :
+  UTG raise to 2, Hero (BTN) call 2
+Flop 4♠️ 2♣️ 5♠️ (pot 6.5 bb, SPR 30.5) :
+  UTG check, Hero (BTN) bet 4.3 (66% pot), UTG call 4.3
+Turn 6♠️ (pot 15.1 bb, SPR 12.8) :
+  UTG check, Hero (BTN) bet 15.1 (100% pot), UTG call 15.1
+River 7♣️ (pot 45.3 bb, SPR 3.9) :
+  UTG check, Hero (BTN) check
+
+Résultat : Gagnée
