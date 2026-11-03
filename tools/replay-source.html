@@ -238,11 +238,12 @@
   .recap > div { display: grid; gap: 4px; padding: 12px 0; border-top: 1px solid var(--line); }
   .recap .top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 
-  .show { display: grid; gap: 12px; padding-bottom: 4px; }
-  .sd { display: flex; align-items: center; gap: 16px; }
-  .sd .mono { min-width: 52px; font: 500 20px var(--font-mono); }
-  .sdcards { display: flex; gap: 10px; }
-  .sdcards .pc { animation: deal 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .show { display: grid; gap: 10px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
+  .sds { display: flex; flex-wrap: wrap; gap: 12px 24px; }
+  .sd { display: flex; align-items: center; gap: 12px; }
+  .sd .mono { font: 500 16px var(--font-mono); letter-spacing: 0.04em; }
+  .sdcards { display: flex; gap: 6px; }
+  .sdcards.fresh .pc { animation: deal 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); }
 
   /* Historique */
   .log { display: grid; gap: 4px; }
@@ -682,7 +683,7 @@ const calm = () => !(typeof window !== 'undefined' && window.matchMedia && windo
 const delayFor = ev => calm() ? (ev.t === 'street' ? 1700 : 1600) : 600;
 const r1 = n => Math.round(n * 10) / 10;
 
-let H = null, idx = 0, phase = 'playing', guesses = [], aggroOpen = false, customOpen = false, lastEv = null, timer = null;
+let H = null, idx = 0, phase = 'playing', guesses = [], aggroOpen = false, customOpen = false, lastEv = null, timer = null, sdSeen = false;
 /* Mode invité : si une main est intégrée ici, la page ne propose que celle-là (pas de saisie, pas de « nouvelle main »). */
 let GUEST_HAND = null; /* mode invité : la main vient du lien (#h=…) ; les anciennes pages par main l'ont intégrée à la construction */
 let GUEST_TITLE = null; /* titre affiché en haut de la main (saisi à la création du lien) */
@@ -785,7 +786,7 @@ function step() {
 }
 function start() {
   clearTimeout(timer);
-  idx = 0; guesses = []; aggroOpen = false; customOpen = false; lastEv = null; phase = 'playing';
+  idx = 0; guesses = []; aggroOpen = false; customOpen = false; lastEv = null; phase = 'playing'; sdSeen = false;
   render(); toTop();
   timer = setTimeout(step, calm() ? 1000 : 400);
 }
@@ -939,15 +940,28 @@ function decideHtml(st, toCall, log) {
   return h + `</div>`;
 }
 
+/* Showdown : les cartes des adversaires encore en main sont retournées dès qu'il n'y a plus d'action possible : tapis (même préflop,
+   avant le flop) ou fin de la river. Elles restent affichées pendant la suite de la main et dans le récap. */
+function showdownSeats(st, me) {
+  if (me.folded) return [];
+  const alive = Object.keys(st.pl).filter(k => !st.pl[k].folded);
+  if (alive.length < 2) return [];
+  if (H.events.slice(idx).some(e => e.t === 'act')) return [];
+  if (!(st.street === 'river' || alive.some(k => st.pl[k].allin))) return [];
+  return alive.filter(k => k !== H.heroPos && H.villains[k]);
+}
+function showdownHtml(st, me) {
+  const shown = showdownSeats(st, me), fresh = shown.length > 0 && !sdSeen;
+  sdSeen = shown.length > 0;
+  if (!shown.length) return '';
+  const cw = shown.length > 1 ? 46 : 64;
+  return `<div class="show"><span class="lab">Showdown</span><div class="sds">${shown.map(k => `<div class="sd"><span class="mono">${esc(k)}</span><div class="sdcards${fresh ? ' fresh' : ''}">${H.villains[k].map(c => cardHtml(c, cw)).join('')}</div></div>`).join('')}</div></div>`;
+}
+
 function recapHtml(st, me) {
   const okN = guesses.filter(g => g.full).length, okA = guesses.filter(g => g.guess === g.actual).length;
   const sized = guesses.filter(g => g.sizeOk != null), okS = sized.filter(g => g.sizeOk).length;
-  const alive = Object.keys(st.pl).filter(k => !st.pl[k].folded);
-  /* showdown : à la river, ou dès qu'un joueur est all-in (la main se termine sans autre action, même préflop) */
-  const reachedSd = st.street === 'river' || alive.some(k => st.pl[k].allin);
-  const shown = (reachedSd && !me.folded && alive.length >= 2) ? alive.filter(k => k !== H.heroPos && H.villains[k]) : [];
-  const sd = shown.length ? `<div class="show"><span class="lab">Showdown</span>${shown.map(k => `<div class="sd"><span class="mono">${esc(k)}</span><div class="sdcards">${H.villains[k].map(c => cardHtml(c, 64)).join('')}</div></div>`).join('')}</div>` : '';
-  return `<div class="panel decide">${sd}<div class="score">${okN} / ${guesses.length}<small>décisions identiques</small></div>
+  return `<div class="panel decide"><div class="score">${okN} / ${guesses.length}<small>décisions identiques</small></div>
     ${sized.length ? `<p class="muted">Actions identiques : ${okA} / ${guesses.length} · Tailles identiques : ${okS} / ${sized.length}</p>` : ''}
     <div class="recap">${guesses.map(g => {
       const ok = g.full, same = g.guess === g.actual;
@@ -1146,6 +1160,7 @@ function render() {
     </div>
   </div>`;
 
+  h += showdownHtml(st, me);
   if (playing) h += liveHtml(log);
   else if (phase === 'done') h += recapHtml(st, me);
   else h += decideHtml(st, toCall, log);
