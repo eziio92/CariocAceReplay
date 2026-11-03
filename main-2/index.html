@@ -653,7 +653,7 @@ const r1 = n => Math.round(n * 10) / 10;
 let H = null, idx = 0, phase = 'playing', guesses = [], aggroOpen = false, customOpen = false, lastEv = null, timer = null;
 /* Mode invité : si une main est intégrée ici, la page ne propose que celle-là (pas de saisie, pas de « nouvelle main »). */
 const GUEST_HAND = "Main Event · 2 nov. 2026 · main n°2\n6-max · ante 1 bb · Début\nHero BTN 200 bb : 7♦️ 7♠️\nUTG 200 bb : J♥️ J♣️\n\nPreflop (pot 2.5 bb) · SRP :\n  UTG raise to 2, Hero (BTN) call 2\nFlop 4♠️ 2♣️ 5♠️ (pot 6.5 bb, SPR 30.5) :\n  UTG check, Hero (BTN) bet 4.3 (66% pot), UTG call 4.3\nTurn 6♠️ (pot 15.1 bb, SPR 12.8) :\n  UTG check, Hero (BTN) bet 15.1 (100% pot), UTG call 15.1\nRiver 7♣️ (pot 45.3 bb, SPR 3.9) :\n  UTG check, Hero (BTN) check\n\nRésultat : Gagnée";
-const GUEST_TITLE = "Main Event KSOP buy-in 1000 euros"; /* titre affiché en haut de la main (une question posée à chaque nouvelle main) */
+const GUEST_TITLE = "Main Event KSOP buy-in : 1000 €"; /* titre affiché en haut de la main (une question posée à chaque nouvelle main) */
 const NTFY_TOPIC = "cariocace-94375a0493d9"; /* version web : les réponses partent en notification vers ce sujet ntfy */
 let ownerRows = null; /* mode invité, côté propriétaire : les réponses reçues */
 let GH = null, GUEST_NAME = '', sendState = 'idle'; /* idle | sending | sent | exists | fail | nowrite */
