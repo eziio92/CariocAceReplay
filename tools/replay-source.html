@@ -544,12 +544,48 @@ function parseHand(raw) {
   const size = tm ? Math.min(Math.max(parseInt(tm[1], 10), 3), 9) : ([...players].some(p => /^(UTG\+|LJ|MP|EP)/.test(p)) ? 9 : 6);
   const rank = p => { const i = PF.indexOf(p); return i < 0 ? 99 : i; };
   const seats = [...new Set([...BASE_SEATS[size], ...players])].sort((a, b) => rank(a) - rank(b));
-  return {
+  const H = {
     heroPos, heroCards, stack, stacks, ante, villains, events, results, notes,
     players: [...players], seats, listed: [...listed],
-    heroCount: events.filter(e => e.t === 'act' && e.pos === heroPos).length,
     hasEst: events.some(e => e.t === 'act' && (e.kind === 'bet' || e.kind === 'raise') && e.amt == null && e.pct == null)
   };
+  H.events = insertMissingChecks(H);
+  H.heroCount = H.events.filter(e => e.t === 'act' && e.pos === heroPos).length;
+  return H;
+}
+
+/* Après le flop, la parole commence par SB, puis BB, UTG… BTN. Une main notée sans le check initial
+   (ex. « UTG bet 1.8, Hero (SB) raise to 4.5 ») est complétée : les joueurs encore en jeu qui parlent avant
+   le premier miseur ont checké. Un joueur qui a lui-même une action notée avant la première mise n'est pas
+   complété : l'ordre noté fait foi. */
+function insertMissingChecks(H) {
+  const st = initState(H), n = st.seats.length, evs = H.events, out = [];
+  const prank = k => (st.seats.indexOf(k) + 2) % n;
+  let plan = new Map();
+  for (let i = 0; i < evs.length; i++) {
+    const ev = evs[i];
+    if (ev.t === 'street') {
+      nextStreet(st, ev); out.push(ev); plan = new Map();
+      let j = i + 1; while (j < evs.length && evs[j].t === 'act') j++;
+      const seg = evs.slice(i + 1, j);
+      const fa = seg.findIndex(e => e.kind === 'bet' || e.kind === 'raise' || e.kind === 'allin');
+      const pre = fa < 0 ? seg : seg.slice(0, fa + 1);
+      const acted = new Set();
+      pre.forEach((e, q) => {
+        const later = new Set(pre.slice(q + 1).map(x => x.pos));
+        const miss = st.seats.filter(k => {
+          const p = st.pl[k];
+          return p && !p.folded && !p.allin && k !== e.pos && !acted.has(k) && !later.has(k) && prank(k) < prank(e.pos);
+        }).sort((a, b) => prank(a) - prank(b));
+        if (miss.length) plan.set(e, miss.map(k => ({ t: 'act', pos: k, kind: 'check', implicit: true })));
+        miss.forEach(k => acted.add(k)); acted.add(e.pos);
+      });
+      continue;
+    }
+    if (plan.has(ev)) plan.get(ev).forEach(c => out.push(c));
+    foldBefore(st, ev.pos); applyAct(st, ev); out.push(ev);
+  }
+  return out;
 }
 
 /* Moteur : tout est en bb, un montant de raise ou de bet est « jusqu'à » */
