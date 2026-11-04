@@ -338,6 +338,7 @@
   .opt.sel { border-color: var(--plat); }
   .sizes { display: grid; gap: 10px; }
   .grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .grid4 > :last-child:nth-child(4n+1) { grid-column: 1 / -1; } /* « Autre » seul sur la dernière ligne : pleine largeur */
   .opt.sz { height: 56px; font-size: 15px; }
   .custom { display: flex; gap: 8px; }
   .custom input {
@@ -678,7 +679,7 @@ const SAMPLE = [
   'Résultat: showdown, Hero gagne'
 ].join('\n');
 
-const PCTS = [20, 40, 50, 66, 80, 100];
+const PCTS = [20, 33, 40, 50, 66, 80, 100];
 const calm = () => !(typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 const delayFor = ev => calm() ? (ev.t === 'street' ? 1700 : 1600) : 600;
 const r1 = n => Math.round(n * 10) / 10;
