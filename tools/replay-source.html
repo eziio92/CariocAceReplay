@@ -679,7 +679,8 @@ const SAMPLE = [
   'Résultat: showdown, Hero gagne'
 ].join('\n');
 
-const PCTS = [20, 33, 40, 50, 66, 80, 100];
+const PCTS = [20, 33, 40, 50, 66, 80, 100]; /* bet quand personne n'a misé : % du pot */
+const RAISE_X = [2, 2.5, 3, 3.5, 4, 5]; /* raise face à un bet ou un raise : multiples de la mise en cours (comme CariocAce Hands) */
 const calm = () => !(typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 const delayFor = ev => calm() ? (ev.t === 'street' ? 1700 : 1600) : 600;
 const r1 = n => Math.round(n * 10) / 10;
@@ -704,14 +705,14 @@ function cardHtml(c, cw, cls) {
 }
 
 /* Textes d'action */
-function pctOf(a) {
+/* Taille d'un bet (en % du pot) ou d'un raise après une mise (en multiple de la mise en cours, comme les tailles proposées). */
+function sizeNote(a) {
   if (a.street === 'preflop' || a.to == null) return null;
-  const base = a.kind === 'bet' ? a.potBefore : a.potBefore + a.toCall;
-  const from = a.kind === 'bet' ? 0 : a.curBefore;
-  return base > 0 ? Math.round((a.to - from) / base * 100) : null;
+  if (a.kind !== 'bet' && a.curBefore > 1e-9) return fmt(r1(a.to / a.curBefore)) + 'x';
+  return a.potBefore > 0 ? Math.round(a.to / a.potBefore * 100) + ' % pot' : null;
 }
 function descAct(a) {
-  const t = a.est ? '~' : '', al = a.allin ? ' · all-in' : '', p = pctOf(a), ps = p != null ? ` (${p} % pot)` : '';
+  const t = a.est ? '~' : '', al = a.allin ? ' · all-in' : '', p = sizeNote(a), ps = p != null ? ` (${p})` : '';
   switch (a.kind) {
     case 'fold': return 'Fold';
     case 'check': return 'Check';
@@ -721,7 +722,7 @@ function descAct(a) {
   }
 }
 function descLog(a) {
-  const t = a.est ? '~' : '', al = a.allin ? ' · all-in' : '', p = pctOf(a), ps = p != null ? ` (${p} %)` : '';
+  const t = a.est ? '~' : '', al = a.allin ? ' · all-in' : '', p = sizeNote(a), ps = p != null ? ` (${p.replace(' pot', '')})` : '';
   switch (a.kind) {
     case 'fold': return 'fold';
     case 'check': return 'check';
@@ -747,10 +748,17 @@ function sizeOptions(st) {
     } else {
       [2.2, 2.5, 3, 4].forEach(m => { const to = clamp(st.cur * m); opts.push({ key: 'x' + m, to, main: fmt(m) + 'x', sub: fmt(to) + ' bb', text: fmt(m) + 'x · ' + fmt(to) + ' bb' }); });
     }
+  } else if (st.cur > 1e-9) {
+    RAISE_X.forEach(m => {
+      const raw = st.cur * m, to = clamp(raw), low = raw < minTo - 1e-9;
+      if (raw > maxTo + 1e-9) return; /* au-delà du tapis : c'est « All-in », proposé à part */
+      opts.push({ key: 'x' + m, to, main: low ? 'Min' : fmt(m) + 'x', sub: fmt(to) + ' bb', text: (low ? 'Min' : fmt(m) + 'x') + ' · ' + fmt(to) + ' bb' });
+    });
   } else {
     PCTS.forEach(p => {
-      const raw = toCall > 0 ? st.cur + p / 100 * (pot + toCall) : p / 100 * pot;
+      const raw = p / 100 * pot;
       const to = clamp(raw), low = raw < minTo - 1e-9;
+      if (raw > maxTo + 1e-9) return; /* au-delà du tapis : c'est « All-in », proposé à part */
       opts.push({ key: 'p' + p, to, main: low ? 'Min' : p + ' %', sub: fmt(to) + ' bb', text: (low ? 'Min' : p + ' %') + ' · ' + fmt(to) + ' bb' });
     });
   }
