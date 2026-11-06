@@ -8,12 +8,16 @@ deux pages figées de l'ancien mode (`main-2/`, `main-3/`). Tous les `index.html
 
 La page d'accueil (`index.html`, générée par `python3 tools/build.py --site` à partir de `tools/replay-source.html`) fait deux choses :
 - **Créer** : l'auteur colle une main (ou l'appli de notes la lui envoie par le bouton « Faire deviner »), tape le titre, voit l'aperçu et copie le lien.
-- **Jouer** : le lien `…/CariocAceReplay/#h=1.<main et titre encodés>` ouvre la main pour l'invité. Rien n'est publié ni construit : la main est dans le lien.
+- **Jouer** : le lien `…/CariocAceReplay/#h=2.<main et titre en base 62>` ouvre la main pour l'invité. Rien n'est publié ni construit : la main est dans le lien.
+  - **Format court `#h=2.`** (depuis le 6 nov. 2026) : la main analysée par `parseHand` est rangée en bits (positions, cartes, actions, montants) puis écrite en base 62 (chiffres et lettres seulement). Un lien fait 110 à 170 caractères avec un titre de 33 caractères. À l'ouverture, les bits redonnent un texte de main canonique que `parseHand` relit. Le code est dans `tools/replay-source.html` (bloc « Lien court (v2) », fonctions `p2Pack`, `p2Unpack`).
+  - **Pourquoi** : constat de l'auteur le 6 nov. 2026 (capture d'écran) : dans WhatsApp sur iPhone, seuls les ~200 premiers caractères d'un lien restent cliquables ; l'ancien format `#h=1.` (JSON en base64, 360 à 690 caractères) était donc inutilisable dans WhatsApp. Ne jamais revenir à un format plus long par défaut.
+  - **Garde-fou** : `p2Pack` relit sa propre sortie et ne rend le lien court que si la main relue est strictement la même (sinon `null`, et la page fabrique l'ancien lien `#h=1.`, par exemple pour une position hors liste comme MP3). La page affiche un avertissement si un lien dépasse 200 caractères.
+  - **Anciens liens** : `#h=1.` (JSON en base64) et `#new=` (envoyé par le bouton « Faire deviner ») restent lus. Ne pas casser leur décodage.
 
 L'auteur n'a plus besoin de Claude pour envoyer une main. Si l'auteur demande à Claude de fabriquer un lien :
 1. **Poser la question du titre** (« Quel titre afficher en haut de la page ? », exemple : « Main Event KSOP buy-in 1000 euros »). Un titre par main, jamais réutilisé sans demander.
-2. Retirer les lignes `Tags`, `Note`, `Commentaire`, `Correction` (notes privées, le lien est lisible par tous), puis encoder comme `b64enc(JSON.stringify({t: titre, h: main}))` de la page.
-3. Après toute modification de `tools/replay-source.html` : `python3 tools/build.py --site`, jouer la page dans un navigateur (Playwright : création du lien, jeu invité, bandeau en haut, pas de débordement, envoi ntfy au bon format, essayer aussi un échec 503 puis un succès), vérifier par `sha256sum` que `main-2/` et `main-3/` n'ont pas changé, puis commit + push sur `main`. Mise en ligne : 1 à 2 minutes (cache GitHub Pages ~10 min, ajouter `?v=N` pour tester).
+2. Retirer les lignes `Tags`, `Note`, `Commentaire`, `Correction` (notes privées, le lien est lisible par tous), puis encoder avec `p2Pack(main, titre)` de la page (lien `#h=2.` + `code`) ; si `p2Pack` rend `null`, encoder comme `b64enc(JSON.stringify({t: titre, h: main}))` (lien `#h=1.`, long).
+3. Après toute modification de `tools/replay-source.html` : `python3 tools/build.py --site`, lancer `node tools/test-links.js` (codec des liens courts : cas limites, 3 000 mains aléatoires, entrées hostiles), jouer la page dans un navigateur (Playwright : création du lien, jeu invité, bandeau en haut, pas de débordement, envoi ntfy au bon format, essayer aussi un échec 503 puis un succès), vérifier par `sha256sum` que `main-2/` et `main-3/` n'ont pas changé, puis commit + push sur `main`. Mise en ligne : 1 à 2 minutes (cache GitHub Pages ~10 min, ajouter `?v=N` pour tester).
 
 ## Règles fixes
 

@@ -851,6 +851,190 @@ function b64dec(s) {
   for (let i = 0; i < t.length; i++) b[i] = t.charCodeAt(i);
   return new TextDecoder().decode(b);
 }
+/* ---- Lien court (v2) -------------------------------------------------------------------------
+   La main est analysée par parseHand, puis rangée en bits (positions, cartes, actions, montants) et écrite
+   en base 62 (chiffres et lettres seulement, aucun signe que WhatsApp pourrait couper). À l'ouverture,
+   les bits redonnent un texte de main « canonique » que parseHand relit comme d'habitude.
+   Le lien n'est court que si la relecture donne exactement la même main : sinon on garde l'ancien format. */
+const P2_POS = PF.concat(['HERO']);
+const P2_KINDS = ['fold', 'check', 'call', 'bet', 'raise', 'allin'];
+const P2_RESULTS = ['Gagnée', 'Perdue', 'Split'];
+const P2_RANKS = '23456789TJQKA', P2_SUITS = 'shdc';
+const B62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+
+function p2Writer() {
+  const bits = [];
+  const put = (v, n) => { for (let i = n - 1; i >= 0; i--) bits.push(Math.floor(v / Math.pow(2, i)) % 2); };
+  const num = x => {
+    if (typeof x !== 'number' || !isFinite(x) || x < 0 || x >= 1e6) throw new Error('p2 nombre');
+    for (const [mode, k] of [[0, 1], [1, 10], [2, 100]]) {
+      const v = Math.round(x * k);
+      if (Math.abs(x * k - v) < 1e-7) {
+        const L = v === 0 ? 0 : Math.floor(Math.log2(v)) + 1;
+        put(mode, 2); put(L, 5); if (L) put(v, L); return;
+      }
+    }
+    throw new Error('p2 nombre');
+  };
+  const pos = p => { const i = P2_POS.indexOf(p); if (i < 0) throw new Error('p2 position'); put(i, 4); };
+  const card = c => { const r = P2_RANKS.indexOf(c.r), s = P2_SUITS.indexOf(c.s); if (r < 0 || s < 0) throw new Error('p2 carte'); put(r * 4 + s, 6); };
+  const bytes = () => {
+    const out = [];
+    for (let i = 0; i < bits.length; i += 8) { let b = 0; for (let j = 0; j < 8; j++) b = b * 2 + (bits[i + j] || 0); out.push(b); }
+    return out;
+  };
+  return { put, num, pos, card, bytes };
+}
+function p2Reader(bytes) {
+  let at = 0;
+  const get = n => { let v = 0; for (let i = 0; i < n; i++, at++) { const byte = bytes[at >> 3]; if (byte === undefined) throw new Error('p2 fin'); v = v * 2 + ((byte >> (7 - (at & 7))) & 1); } return v; };
+  const num = () => {
+    const mode = get(2), L = get(5), v = L ? get(L) : 0;
+    if (mode > 2) throw new Error('p2 nombre');
+    return mode === 0 ? v : v / (mode === 1 ? 10 : 100);
+  };
+  const pos = () => { const i = get(4); if (i >= P2_POS.length) throw new Error('p2 position'); return P2_POS[i]; };
+  const card = () => { const i = get(6); if (i >= 52) throw new Error('p2 carte'); return { r: P2_RANKS[i >> 2], s: P2_SUITS[i & 3] }; };
+  const rest = () => bytes.slice(Math.ceil(at / 8));
+  return { get, num, pos, card, rest };
+}
+
+/* La main analysée, réduite à ce que la page sait rejouer (sert à écrire les bits ET à vérifier la relecture). */
+function p2Fields(H, size) {
+  if (H.heroPos === 'HERO') throw new Error('p2 hero');
+  const events = H.events.filter(e => !e.implicit).map(e => {
+    if (e.t === 'street') return { t: 'street', street: e.street, cards: e.cards };
+    const o = { t: 'act', pos: e.pos, kind: e.kind };
+    if (e.kind === 'bet' || e.kind === 'raise') { if (e.amt != null) o.amt = e.amt; if (e.pct != null) o.pct = e.pct; }
+    return o;
+  });
+  return { size, heroPos: H.heroPos, heroCards: H.heroCards, stack: H.stack, stacks: H.stacks, ante: H.ante || 0,
+    villains: H.villains, events, results: H.results };
+}
+function p2Write(f, title) {
+  const w = p2Writer();
+  w.put(f.size - 3, 3); w.pos(f.heroPos); f.heroCards.forEach(w.card);
+  const same = f.stacks[f.heroPos] !== undefined && f.stacks[f.heroPos] === f.stack;
+  w.put(same ? 1 : 0, 1); if (!same) w.num(f.stack);
+  w.put(f.ante > 0 ? 1 : 0, 1); if (f.ante > 0) w.num(f.ante);
+  const sk = Object.keys(f.stacks); if (sk.length > 15) throw new Error('p2 stacks');
+  w.put(sk.length, 4); sk.forEach(k => { w.pos(k); w.num(f.stacks[k]); });
+  const vk = Object.keys(f.villains); if (vk.length > 15) throw new Error('p2 villains');
+  w.put(vk.length, 4); vk.forEach(k => { w.pos(k); f.villains[k].forEach(w.card); });
+  f.events.forEach(e => {
+    if (e.t === 'street') { w.put(1, 2); w.put(['flop', 'turn', 'river'].indexOf(e.street), 2); e.cards.forEach(w.card); return; }
+    w.put(0, 2); w.pos(e.pos); w.put(P2_KINDS.indexOf(e.kind), 3);
+    if (e.kind === 'bet' || e.kind === 'raise') {
+      if (e.pct != null) { w.put(2, 2); w.num(e.pct); } else if (e.amt != null) { w.put(1, 2); w.num(e.amt); } else w.put(0, 2);
+    }
+  });
+  w.put(3, 2);
+  if (f.results.length > 7) throw new Error('p2 résultats');
+  w.put(f.results.length, 3);
+  f.results.forEach(r => {
+    const i = P2_RESULTS.indexOf(r);
+    if (i >= 0) { w.put(i, 2); return; }
+    const b = new TextEncoder().encode(r); if (b.length > 63) throw new Error('p2 résultat long');
+    w.put(3, 2); w.put(b.length, 6); b.forEach(x => w.put(x, 8));
+  });
+  return w.bytes().concat(Array.from(new TextEncoder().encode(title)));
+}
+function p2Read(bytes) {
+  const r = p2Reader(bytes), f = { size: r.get(3) + 3 };
+  f.heroPos = r.pos(); f.heroCards = [r.card(), r.card()];
+  const same = r.get(1); f.stack = same ? null : r.num();
+  f.ante = r.get(1) ? r.num() : 0;
+  f.stacks = {}; for (let n = r.get(4); n > 0; n--) { const k = r.pos(); f.stacks[k] = r.num(); }
+  if (same) { if (f.stacks[f.heroPos] === undefined) throw new Error('p2 stack'); f.stack = f.stacks[f.heroPos]; }
+  f.villains = {}; for (let n = r.get(4); n > 0; n--) { const k = r.pos(); f.villains[k] = [r.card(), r.card()]; }
+  f.events = [];
+  for (let t; (t = r.get(2)) !== 3;) {
+    if (t === 1) { const s = r.get(2); if (s > 2) throw new Error('p2 street'); f.events.push({ t: 'street', street: ['flop', 'turn', 'river'][s], cards: Array.from({ length: s ? 1 : 3 }, r.card) }); continue; }
+    if (t !== 0) throw new Error('p2 événement');
+    const e = { t: 'act', pos: r.pos(), kind: P2_KINDS[r.get(3)] }; if (!e.kind) throw new Error('p2 action');
+    if (e.kind === 'bet' || e.kind === 'raise') { const m = r.get(2); if (m === 1) e.amt = r.num(); else if (m === 2) e.pct = r.num(); else if (m === 3) throw new Error('p2 taille'); }
+    f.events.push(e);
+  }
+  f.results = []; for (let n = r.get(3); n > 0; n--) {
+    const i = r.get(2);
+    if (i < 3) f.results.push(P2_RESULTS[i]);
+    else { const len = r.get(6), b = []; for (let k = 0; k < len; k++) b.push(r.get(8)); f.results.push(new TextDecoder().decode(new Uint8Array(b))); }
+  }
+  return { f, title: new TextDecoder().decode(new Uint8Array(r.rest())) };
+}
+/* Texte de main canonique : lisible dans la notification, et relu par parseHand comme n'importe quelle main. */
+function p2Text(f) {
+  const cs = a => a.map(c => c.r + c.s).join(' ');
+  const n = x => String(x);
+  const L = ['Hero: ' + f.heroPos + ', ' + cs(f.heroCards), f.size + '-max' + (f.ante > 0 ? ', ante ' + n(f.ante) : '')];
+  if (!(f.stacks[f.heroPos] !== undefined && f.stacks[f.heroPos] === f.stack)) L.push('Stack: ' + n(f.stack) + 'bb');
+  Object.keys(f.stacks).forEach(k => {
+    const v = f.villains[k];
+    L.push((k === f.heroPos ? 'Hero' : k) + ' ' + n(f.stacks[k]) + 'bb' + (v ? ' : ' + cs(v) : ''));
+  });
+  Object.keys(f.villains).forEach(k => { if (f.stacks[k] === undefined) L.push(k + ' : ' + cs(f.villains[k])); });
+  const segs = [{ head: 'Preflop:', acts: [] }];
+  f.events.forEach(e => {
+    if (e.t === 'street') { segs.push({ head: e.street[0].toUpperCase() + e.street.slice(1) + ': ' + cs(e.cards), acts: [] }); return; }
+    let s = (e.pos === f.heroPos ? 'Hero' : e.pos) + ' ' + e.kind;
+    if (e.pct != null) s += ' ' + n(e.pct) + '%'; else if (e.amt != null) s += ' ' + n(e.amt);
+    segs[segs.length - 1].acts.push(s);
+  });
+  segs.forEach((g, i) => {
+    if (i === 0) L.push(g.head + (g.acts.length ? ' ' + g.acts.join(', ') : ''));
+    else { L.push(g.head); if (g.acts.length) L.push(g.acts.join(', ')); }
+  });
+  f.results.forEach(r => L.push('Résultat: ' + r));
+  return L.join('\n');
+}
+
+/* Assemblage : essaie le lien court ; renvoie null si la relecture n'est pas strictement la même main. */
+function b62enc(bytes) {
+  let a = [1].concat(bytes), s = '';
+  while (a.length) {
+    let rem = 0; const q = [];
+    for (const d of a) { const cur = rem * 256 + d, qd = Math.floor(cur / 62); rem = cur % 62; if (q.length || qd) q.push(qd); }
+    s = B62[rem] + s; a = q;
+  }
+  return s;
+}
+function b62dec(s) {
+  const a = [0];
+  for (const ch of s) {
+    const i = B62.indexOf(ch); if (i < 0) throw new Error('b62');
+    let carry = i;
+    for (let k = a.length - 1; k >= 0; k--) { const cur = a[k] * 62 + carry; a[k] = cur % 256; carry = Math.floor(cur / 256); }
+    while (carry) { a.unshift(carry % 256); carry = Math.floor(carry / 256); }
+  }
+  if (a[0] !== 1) throw new Error('b62');
+  return a.slice(1);
+}
+function p2Proj(H) {
+  const ev = H.events.map(e => e.t === 'street' ? { t: 'street', street: e.street, cards: e.cards }
+    : Object.assign({ t: 'act', pos: e.pos, kind: e.kind, implicit: !!e.implicit }, (e.kind === 'bet' || e.kind === 'raise') ? { amt: e.amt, pct: e.pct } : {}));
+  const sorted = o => Array.isArray(o) ? o.map(sorted) : (o && typeof o === 'object') ? Object.fromEntries(Object.keys(o).sort().map(k => [k, sorted(o[k])])) : (o === undefined ? null : o);
+  return JSON.stringify(sorted({ hp: H.heroPos, hc: H.heroCards, st: H.stack, ss: H.stacks, an: H.ante, vi: H.villains, ev, re: H.results,
+    no: H.notes, se: H.seats, li: H.listed.slice().sort(), pl: H.players.slice().sort(), es: H.hasEst, hn: H.heroCount }));
+}
+function p2Pack(hand, title) {
+  try {
+    const H = parseHand(hand), want = p2Proj(H);
+    const tm = hand.match(/(\d{1,2})\s*-?\s*max/i), first = tm ? Math.min(Math.max(parseInt(tm[1], 10), 3), 9) : 0;
+    for (const size of [first, 6, 9, 3, 4, 5, 7, 8].filter((s, i, a) => s >= 3 && a.indexOf(s) === i)) {
+      const f = p2Fields(H, size), text = p2Text(f);
+      let G; try { G = parseHand(text); } catch (e) { continue; }
+      if (p2Proj(G) !== want) continue;
+      const bytes = p2Write(f, title), back = p2Read(bytes);
+      if (back.title !== title || p2Text(back.f) !== text) continue;
+      return { code: b62enc(bytes), text };
+    }
+  } catch (e) {}
+  return null;
+}
+function p2Unpack(code) {
+  const { f, title } = p2Read(b62dec(code));
+  return { t: title, h: p2Text(f) };
+}
 const pageBase = () => location.href.split('#')[0].split('?')[0];
 let LINK = null; /* dernier lien créé : { url, title, hand, n } */
 function makeLink() {
@@ -862,9 +1046,11 @@ function makeLink() {
   if (!P.heroCount) { showError("Hero n'a aucune décision à deviner dans cette main."); return; }
   if (!title) { showError('Écris le titre à afficher en haut de la main.'); $('title-input').focus(); return; }
   store(raw);
-  const url = pageBase() + '#h=1.' + b64enc(JSON.stringify({ t: title, h: hand }));
+  /* Lien court (#h=2.) si la main se relit à l'identique, sinon l'ancien format (#h=1.), plus long. */
+  const packed = p2Pack(hand, title);
+  const url = pageBase() + '#h=' + (packed ? '2.' + packed.code : '1.' + b64enc(JSON.stringify({ t: title, h: hand })));
   if (url.length > 7000) { showError('Cette main est trop longue pour tenir dans un lien.'); return; }
-  LINK = { url, title, hand, n: P.heroCount };
+  LINK = { url, title, hand: packed ? packed.text : hand, n: P.heroCount, len: url.length, short: !!packed };
   paintLink(true);
 }
 function paintLink(scroll) {
@@ -874,7 +1060,8 @@ function paintLink(scroll) {
   const msg = `${LINK.title}\n${LINK.url}`;
   el.innerHTML = `<div class="panel share"><span class="lab">Lien à envoyer</span>
     <p class="hint">${esc(LINK.title)} · ${LINK.n} décision${LINK.n > 1 ? 's' : ''} à deviner. La personne met son prénom, joue la main, et ses réponses t'arrivent en notification.</p>
-    <textarea id="link-text" readonly rows="3">${esc(LINK.url)}</textarea>
+    <textarea id="link-text" readonly rows="4">${esc(LINK.url)}</textarea>
+    ${LINK.len > 200 ? `<p class="hint">Ce lien fait ${LINK.len} caractères : WhatsApp coupe les liens trop longs. Un titre plus court le raccourcit.</p>` : ''}
     <div class="row">${canShare ? '<button class="btn primary" data-do="share-link" type="button">Envoyer</button>' : ''}<a class="btn ${canShare ? 'ghost' : 'primary'}" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">WhatsApp</a><button class="btn ghost" data-do="copy-link" type="button">Copier le lien</button></div>
     <span class="lab">Ce qui part dans le lien</span>
     <textarea id="link-hand" readonly rows="${Math.min(12, LINK.hand.split('\n').length + 1)}">${esc(LINK.hand)}</textarea>
@@ -1214,8 +1401,8 @@ document.addEventListener('keydown', e => {
     const m = /^#(h|new)=(.+)$/.exec(location.hash || '');
     if (m && m[1] === 'h') {
       try {
-        const v = /^1\.(.+)$/.exec(m[2]); if (!v) throw new Error('format');
-        const o = JSON.parse(b64dec(v[1]));
+        const v = /^([12])\.(.+)$/.exec(m[2]); if (!v) throw new Error('format');
+        const o = v[1] === '1' ? JSON.parse(b64dec(v[2])) : p2Unpack(v[2]);
         if (!o || typeof o.h !== 'string' || !o.h.trim() || o.h.length > 6000) throw new Error('contenu');
         GUEST_HAND = o.h; GUEST_TITLE = typeof o.t === 'string' && o.t.trim() ? o.t.trim().slice(0, 80) : null;
       } catch (err) {
